@@ -1,0 +1,209 @@
+esphome:
+  name: fish_tank_controller_v01
+  platform: ESP8266
+  board: esp12e
+globals:
+  - id: pump_state
+    type: int
+    restore_value: no
+    initial_value: '1'
+
+wifi:
+  ssid: "foggy_2G"
+  password: "1989Fox228"
+  #manual_ip:
+  #  static_ip: 192.168.0.197
+  #  gateway: 192.168.0.1
+  #  subnet: 255.255.255.0
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Tank Hotspot"
+  reboot_timeout: 60min
+  
+captive_portal:
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  password: "1989228"
+  reboot_timeout: 0s
+ota:
+  password: "1989228"
+  id: tank
+
+dallas:
+  - pin: GPIO04
+    update_interval: 10s
+
+sensor:
+  - platform: dht
+    model: DHT11
+    pin: GPIO12
+    temperature:
+      name: "main temperature 20200001"
+      id: main_temperature_20200001
+    humidity:
+      name: "main humidity 20200001"
+      id: main_humidity_20200001
+      on_value_range:
+        - above: 90
+          then:
+            output.turn_on: tank_fan_20200001
+        - below: 75
+          then:
+            output.turn_off: tank_fan_20200001
+      on_value:
+        then:
+          - mqtt.publish:
+              topic: /foggy/controller/fish_tank_20200001/humi
+              payload: !lambda "return ::to_string(int(id(main_humidity_20200001).state+0.5));"
+          - mqtt.publish:
+              topic: /foggy/controller/fish_tank_20200001/temp
+              payload: !lambda "return ::to_string(int(id(main_temperature_20200001).state+0.5));"    
+              
+    update_interval: 10s
+  - platform: dallas
+    accuracy_decimals: 1
+    index: 0
+    name: 'fish tank temperature 20200001'
+    id: fish_tank_temp_20200001
+    on_value:
+      then:
+        - mqtt.publish:
+            topic: /foggy/controller/fish_tank_20200001/temp
+            payload: !lambda "return ::to_string(int(x+0.5));"
+    on_value_range:
+      - above: 32
+        then:
+          - switch.turn_off: tank_heater_20200001
+          - output.turn_on: tank_fan_20200001
+      - below: 31
+        then:
+          - switch.turn_on: tank_heater_20200001
+          - output.turn_off: tank_fan_20200001
+    
+binary_sensor:
+  - platform: gpio
+    filters:
+      - invert:
+    name: "feed button 20200001"
+    id: feed_button_20200001
+    pin: GPIO03
+    on_click:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(pump_state) == 1;'
+            then:
+              - switch.turn_off: tank_pump_20200001
+              - lambda: 'id(pump_state) = 2;'
+              - delay: 10min
+              - switch.turn_on: tank_pump_20200001
+              - lambda: 'id(pump_state) = 1;'
+        - if:
+            condition:
+              lambda: 'return id(pump_state) == 2;'
+            then:
+              - switch.turn_on: tank_pump_20200001
+              - lambda: 'id(pump_state) = 1;'
+
+spi:
+  clk_pin: GPIO14
+  mosi_pin: GPIO0
+  
+display:
+#  - platform: ssd1306_spi
+#    model: "SSD1306 128x64"
+#    cs_pin: 3
+#    dc_pin: D3
+#    reset_pin: D4
+#    lambda: |-
+#      if (id(pump_state)==1){
+#        it.printf(0,10,id(my_font),"Pump: ON");
+#      }if(id(pump_state)==2){
+#        it.printf(0,10,id(my_font),"Pump: FEED");
+#      }if(id(pump_state)==0){
+#        it.printf(0,10,id(my_font),"Pump: OFF");
+#      }
+#      it.printf(0,54,id(my_font),"Fish Tank: %.1f°C",id(fish_tank_temp).state);
+#      if (id(tank_heater).state){
+#        it.print(0, 32, id(my_font), "Heater: ON");
+#        }else{
+#          it.print(0, 32, id(my_font), "Heater: OFF");
+#        }
+  - platform: max7219
+    cs_pin: GPIO2
+    num_chips: 1
+    intensity: 5
+    lambda: |-
+      if (id(pump_state)==1){
+        it.printf(" ON  %.1f",id(fish_tank_temp_20200001).state);
+      }if(id(pump_state)==2){
+        it.printf("FEED %.1f",id(fish_tank_temp_20200001).state);
+      }if(id(pump_state)==0){
+        it.printf(" OFF %.1f",id(fish_tank_temp_20200001).state);
+      }
+output:
+  - platform: gpio
+    pin: GPIO15
+    id: tank_fan_20200001
+switch:
+  - platform: gpio
+    pin: GPIO13
+    name: "tank pump 20200001"
+    id: tank_pump_20200001
+    restore_mode: ALWAYS_ON
+  - platform: gpio
+    pin: GPIO16
+    name: "tank heater 20200001"
+    id: tank_heater_20200001
+    restore_mode: ALWAYS_ON
+  - platform: gpio
+    pin: GPIO5
+    name: "tank light 20200001"
+    id: tank_light_20200001
+    restore_mode: ALWAYS_OFF
+    #Boot will fail if D8 is pulled HIGH
+  - platform: output
+    name: "tank fan 20200001"
+    # id: tank_fan
+    output: "tank_fan_20200001"
+    #restore_mode: ALWAYS_OFF
+# output:
+#   - platform: esp8266_pwm
+#     pin: D8
+#     #frequency: 1000 Hz
+#     id: pwm_output
+
+# Example usage in a light
+# light:
+#   - platform: monochromatic
+#     output: pwm_output
+#     name: "tank_light_pwm"
+#     default_transition_length: 2s
+#     id: tank_light_pwm
+#   - platform: fastled_clockless
+#     chipset: WS2812
+#     pin: D8
+#     num_leds: 12
+#     rgb_order: GRB
+#     name: "color_light"
+#     id: color_light
+    
+mqtt:
+  broker: "foggyhlwfox.duckdns.org"
+  username: foggy
+  password: foggy1989228
+  on_message:
+    - topic: /foggy/controller/fish_tank_20200001/light
+      payload: "1"
+      then:
+        switch.turn_on: tank_light_20200001
+    - topic: /foggy/controller/fish_tank_20200001/light
+      payload: "0"
+      then:
+        switch.turn_off: tank_light_20200001
+
+
