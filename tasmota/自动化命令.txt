@@ -1,0 +1,30 @@
+#tasmota版本的鱼缸控制器设定
+#电路板接口改动：
+#GPIO3不再使用；MAX7219不再使用
+#GPIO0对应触发喂食按钮（点动）
+#GPIO14对应水泵开关（自锁)
+#使用时请勿复制“#”后的注释内容
+
+SetOption73 1        #取消button对默认power的联动
+
+rule1 on DS18B20#Temperature>33 do power2 0 endon on DS18B20#Temperature<31 do power2 1 endon           #DS18B20温度控制relay2
+
+rule1 1  #rule1使能
+
+rule2 on button1#state=10 do backlog power1 off; ruletimer1 10 endon on rules#timer=1 do power1 on endon        #button1单击关闭relay1，10s后自动打开relay1
+
+rule2 1  #rule2使能
+
+rule3 on DHT11#Humidity>80 do power4 1 endon on DHT11#Humidity<70 do power4 0 endon         #DHT11的湿度控制relay4
+
+rule3 1  #rule3 使能
+
+status 7   #查看timezone
+
+timezone +8     #设定模块当前时区为utc+8（中国东八区）
+latitude 40     #设定纬度
+longitude 117    #设定经度
+
+rule1 ''  #清除rule1
+rule2 ''
+rule3 ''
